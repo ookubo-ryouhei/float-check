@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>浮動小数点数のしくみ｜IEEE 754 単精度ビジュアライザ</title>
+<!--
+  浮動小数点数（IEEE 754 単精度・32ビット）学習用アプリ
+  高校「情報」向け／ビルド不要・単一ファイル・GitHub Pages 対応
+  色のルール：符号部=コーラル / 指数部=ティール / 仮数部=インディゴ（全画面で統一）
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F6F2EA;
+    --paper-2:#EFE9DD;
+    --card:#FFFFFF;
+    --ink:#23201B;
+    --ink-soft:#6F685D;
+    --ink-faint:#A89F90;
+    --line:#E5DECF;
+
+    --sign:#C75643;    --sign-tint:#F7E5E0;   --sign-deep:#9E3D2D;
+    --exp:#2E8076;     --exp-tint:#DCEEEA;    --exp-deep:#1F5B53;
+    --man:#3F62A6;     --man-tint:#E3E9F5;    --man-deep:#2C4576;
+
+    --radius:16px;
+    --radius-sm:10px;
+    --shadow:0 1px 2px rgba(35,32,27,.04), 0 8px 24px rgba(35,32,27,.06);
+    --shadow-soft:0 1px 2px rgba(35,32,27,.04), 0 2px 8px rgba(35,32,27,.05);
+    --font:'Zen Kaku Gothic New', -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font);
+    color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(46,128,118,.06), transparent 60%),
+      radial-gradient(900px 500px at -5% 10%, rgba(199,86,67,.05), transparent 55%),
+      var(--paper);
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+
+  /* 三色のサインバー */
+  .topbar{height:5px;display:flex;}
+  .topbar span{flex:1;}
+  .topbar span:nth-child(1){background:var(--sign);}
+  .topbar span:nth-child(2){background:var(--exp);}
+  .topbar span:nth-child(3){background:var(--man);}
+
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px 80px;}
+
+  header.site{padding:34px 0 18px;}
+  .eyebrow{
+    font-size:13px;letter-spacing:.18em;font-weight:700;color:var(--ink-soft);
+    text-transform:uppercase;margin:0 0 8px;
+  }
+  h1.title{
+    font-weight:900;font-size:clamp(28px,4.5vw,44px);line-height:1.25;
+    margin:0 0 10px;letter-spacing:.01em;
+  }
+  h1.title em{font-style:normal;color:var(--exp-deep);}
+  .lead{font-size:16px;color:var(--ink-soft);margin:0;max-width:62ch;}
+
+  /* 入力カード */
+  .panel{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:26px 28px;margin:24px 0;
+  }
+  .panel h2{
+    font-size:13px;letter-spacing:.14em;font-weight:700;color:var(--ink-soft);
+    margin:0 0 16px;text-transform:uppercase;
+  }
+  .input-row{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap;}
+  .num-field{
+    flex:1;min-width:240px;display:flex;align-items:center;gap:12px;
+    border:1.5px solid var(--line);border-radius:var(--radius-sm);
+    background:var(--paper);padding:6px 16px;transition:border-color .18s, box-shadow .18s;
+  }
+  .num-field:focus-within{border-color:var(--exp);box-shadow:0 0 0 4px var(--exp-tint);}
+  .num-field label{font-size:13px;color:var(--ink-faint);white-space:nowrap;font-weight:500;}
+  .num-field input{
+    flex:1;border:none;background:transparent;outline:none;
+    font-family:var(--mono);font-size:26px;font-weight:500;color:var(--ink);width:100%;
+    padding:8px 0;
+  }
+  .btn{
+    border:none;cursor:pointer;font-family:var(--font);font-weight:700;font-size:16px;
+    border-radius:var(--radius-sm);padding:0 26px;transition:transform .12s, box-shadow .18s, background .18s;
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .btn-primary{background:var(--ink);color:var(--paper);box-shadow:var(--shadow-soft);}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(35,32,27,.18);}
+  .btn-primary:active{transform:translateY(0);}
+  .btn-ghost{
+    background:var(--card);color:var(--ink);border:1.5px solid var(--line);font-size:15px;padding:10px 18px;
+  }
+  .btn-ghost:hover{border-color:var(--ink-soft);}
+  .btn-ghost:disabled{opacity:.35;cursor:not-allowed;}
+  .btn-ghost:disabled:hover{border-color:var(--line);}
+
+  .examples{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .examples .lbl{font-size:13px;color:var(--ink-faint);margin-right:4px;}
+  .chip{
+    border:1px solid var(--line);background:var(--paper);color:var(--ink);
+    font-family:var(--mono);font-size:14px;font-weight:500;padding:5px 12px;border-radius:999px;
+    cursor:pointer;transition:all .15s;
+  }
+  .chip:hover{border-color:var(--exp);background:var(--exp-tint);color:var(--exp-deep);}
+  .chip.special{border-style:dashed;}
+
+  .hint{font-size:13.5px;color:var(--ink-faint);margin:14px 0 0;}
+
+  /* ビット帯（常に表示）── 上(セクション名)・中(ビット)・下(位置番号)を同じ32列グリッドで完全に揃える */
+  .bitzone{margin:24px 0;}
+  .bitzone .sectlabels,
+  .bitzone .bits,
+  .bitzone .bitscale{
+    display:grid;
+    grid-template-columns:repeat(32,1fr);
+    column-gap:3px;
+  }
+  .bitzone .sectlabels{margin-bottom:8px;}
+  .seclabel{
+    border-radius:8px;padding:7px 10px;font-size:12.5px;font-weight:700;text-align:center;
+    display:flex;flex-direction:column;justify-content:center;line-height:1.35;
+  }
+  .seclabel small{font-weight:500;font-size:11px;opacity:.8;}
+  .seclabel.sign{grid-column:1 / span 1;background:var(--sign-tint);color:var(--sign-deep);}
+  .seclabel.exp{grid-column:2 / span 8;background:var(--exp-tint);color:var(--exp-deep);}
+  .seclabel.man{grid-column:10 / span 23;background:var(--man-tint);color:var(--man-deep);}
+
+  .bit{
+    aspect-ratio:1/1.5;border-radius:6px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-weight:700;font-size:clamp(10px,1.7vw,17px);
+    border:1.5px solid var(--line);background:var(--paper);color:var(--ink-faint);
+    transition:background .35s, color .35s, border-color .35s, transform .25s;
+    position:relative;
+  }
+  .bit.empty{color:transparent;}
+  .bit.empty::after{content:"·";color:var(--ink-faint);opacity:.5;}
+  .bit.sign{border-color:var(--sign);}
+  .bit.exp{border-color:var(--exp);}
+  .bit.man{border-color:var(--man);}
+  .bit.on.sign{background:var(--sign);color:#fff;border-color:var(--sign);}
+  .bit.on.exp{background:var(--exp);color:#fff;border-color:var(--exp);}
+  .bit.on.man{background:var(--man);color:#fff;border-color:var(--man);}
+  .bit.off.sign{background:var(--sign-tint);color:var(--sign-deep);}
+  .bit.off.exp{background:var(--exp-tint);color:var(--exp-deep);}
+  .bit.off.man{background:var(--man-tint);color:var(--man-deep);}
+  .bit.pop{animation:pop .4s ease;}
+  @keyframes pop{0%{transform:scale(.4);opacity:0;}60%{transform:scale(1.12);}100%{transform:scale(1);opacity:1;}}
+
+  .bitscale{margin-top:6px;}
+  .bitscale span{text-align:center;font-family:var(--mono);font-size:10px;color:var(--ink-faint);font-weight:500;}
+  .bitscale span.sign{color:var(--sign-deep);font-weight:700;}
+  .bitscale span.exp{color:var(--exp-deep);font-weight:700;}
+  .bitscale span.man{color:var(--man-deep);font-weight:700;}
+
+  /* ステッパー */
+  .stepper{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0;}
+  .stepper button{
+    border:1px solid var(--line);background:var(--card);color:var(--ink-soft);
+    font-family:var(--font);font-size:12.5px;font-weight:700;border-radius:999px;
+    padding:6px 13px;cursor:pointer;transition:all .15s;
+  }
+  .stepper button.active{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+  .stepper button.done{color:var(--exp-deep);border-color:var(--exp);background:var(--exp-tint);}
+
+  /* ステップ本文 ── 高さを固定し、ボタン位置が動かないようにする */
+  .stage{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:30px 32px;margin-top:18px;
+    height:480px;
+    overflow-y:auto;
+    scrollbar-gutter:stable;
+  }
+  .stage-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px;flex-wrap:wrap;}
+  .stage-num{
+    font-family:var(--mono);font-weight:700;font-size:14px;color:var(--paper);
+    background:var(--ink);border-radius:8px;padding:3px 10px;
+  }
+  .stage-title{font-size:23px;font-weight:900;margin:0;}
+  .stage-sub{color:var(--ink-soft);font-size:15px;margin:2px 0 22px;}
+  .stage.anim{animation:rise .45s ease;}
+  @keyframes rise{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+
+  .bignum{
+    font-family:var(--mono);font-size:clamp(26px,5vw,40px);font-weight:700;
+    color:var(--ink);letter-spacing:.01em;
+  }
+  .callout{
+    border-radius:var(--radius-sm);padding:16px 20px;margin:18px 0;font-size:15.5px;
+    background:var(--paper);border:1px solid var(--line);
+  }
+  .callout.sign{background:var(--sign-tint);border-color:var(--sign);color:var(--sign-deep);}
+  .callout.exp{background:var(--exp-tint);border-color:var(--exp);color:var(--exp-deep);}
+  .callout.man{background:var(--man-tint);border-color:var(--man);color:var(--man-deep);}
+  .callout b{font-weight:700;}
+  .mono{font-family:var(--mono);}
+
+  /* 筆算テーブル */
+  .calc{display:flex;flex-wrap:wrap;gap:28px;}
+  .calc-block{flex:1;min-width:260px;}
+  .calc-block h4{font-size:14px;font-weight:700;margin:0 0 10px;color:var(--ink-soft);}
+  table.steps{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:14.5px;}
+  table.steps td{padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.steps tr{opacity:0;animation:fadein .35s ease forwards;}
+  @keyframes fadein{to{opacity:1;}}
+  table.steps .rem{font-weight:700;color:var(--exp-deep);text-align:right;}
+  table.steps .bit1{font-weight:700;color:var(--man-deep);text-align:right;}
+  .arrowread{font-size:13px;color:var(--ink-faint);margin-top:8px;}
+  .resultline{
+    margin-top:16px;font-family:var(--mono);font-size:20px;font-weight:700;
+    background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);
+    padding:14px 18px;word-break:break-all;
+  }
+  .resultline .ipart{color:var(--ink);}
+  .resultline .dot{color:var(--sign);font-weight:700;}
+  .resultline .fpart{color:var(--man-deep);}
+
+  /* 正規化 */
+  .normbox{display:flex;flex-direction:column;gap:14px;align-items:flex-start;}
+  .normrow{font-family:var(--mono);font-size:clamp(18px,3.4vw,28px);font-weight:700;}
+  .normrow .hi{color:var(--exp-deep);background:var(--exp-tint);border-radius:6px;padding:0 4px;}
+  .moved{font-size:14px;color:var(--ink-soft);font-family:var(--font);font-weight:500;}
+  .expo{color:var(--exp-deep);}
+
+  /* 完成 */
+  .finalgrid{display:flex;flex-wrap:wrap;gap:14px;margin-top:20px;}
+  .fcell{flex:1;min-width:150px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;}
+  .fcell .k{font-size:12.5px;color:var(--ink-soft);font-weight:700;letter-spacing:.04em;margin-bottom:6px;}
+  .fcell .v{font-family:var(--mono);font-size:18px;font-weight:700;word-break:break-all;}
+  .verify{margin-top:18px;font-size:15px;}
+  .verify .ok{color:var(--exp-deep);font-weight:700;}
+  .verify .warn{color:var(--sign-deep);font-weight:700;}
+
+  /* ナビ ── 画面下に固定し、ボタン位置とSTEP表示幅を固定 */
+  .nav{
+    position:sticky; bottom:0; z-index:10;
+    display:flex;justify-content:space-between;align-items:center;
+    margin-top:20px;padding:14px 0;gap:12px;
+    background:linear-gradient(to top, var(--paper) 78%, rgba(246,242,234,0) 100%);
+  }
+  .nav .btn-ghost{min-width:120px;justify-content:center;}
+  .progress{
+    font-size:13.5px;color:var(--ink-soft);font-weight:700;font-family:var(--mono);
+    min-width:120px;text-align:center;
+    font-variant-numeric:tabular-nums;
+  }
+
+  .placeholder{color:var(--ink-faint);font-size:16px;text-align:center;padding:48px 0;}
+  .kbd{font-family:var(--mono);background:var(--paper-2);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 7px;font-size:13px;}
+
+  footer{text-align:center;color:var(--ink-faint);font-size:13px;margin-top:40px;}
+
+  @media (max-width:560px){
+    .stage{padding:22px 18px;}
+    .panel{padding:20px 18px;}
+    .seclabel{font-size:10.5px;padding:5px 4px;}
+    .seclabel small{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="topbar"><span></span><span></span><span></span></div>
+<div class="wrap">
+
+  <header class="site">
+    <p class="eyebrow">情報Ⅰ ／ データの表現</p>
+    <h1 class="title">浮動小数点数の<em>しくみ</em></h1>
+    <p class="lead">10進数の小数が、コンピュータの中で <strong>32個の0と1</strong>（IEEE 754 単精度）に変わるまでを、1ステップずつ確かめてみましょう。</p>
+  </header>
+
+  <!-- 入力 -->
+  <section class="panel">
+    <h2>① 数を入力する</h2>
+    <div class="input-row">
+      <div class="num-field">
+        <label for="numInput">10進数</label>
+        <input id="numInput" type="text" inputmode="decimal" value="12.375" autocomplete="off" spellcheck="false">
+      </div>
+      <button class="btn btn-primary" id="convertBtn">変換する　▶</button>
+    </div>
+    <div class="examples">
+      <span class="lbl">例：</span>
+      <button class="chip" data-v="12.375">12.375</button>
+      <button class="chip" data-v="-5.5">-5.5</button>
+      <button class="chip" data-v="0.15625">0.15625</button>
+      <button class="chip" data-v="100">100</button>
+      <button class="chip" data-v="0.75">0.75</button>
+      <button class="chip" data-v="0">0</button>
+      <button class="chip special" data-v="0.1">0.1（誤差が出る例）</button>
+    </div>
+    <p class="hint">キーボードの <span class="kbd">Enter</span> でも変換できます。ステップ表示中は <span class="kbd">←</span> <span class="kbd">→</span> で前後に進めます。</p>
+  </section>
+
+  <!-- ビット帯（常時表示・ステップで埋まっていく） -->
+  <section class="bitzone" aria-label="32ビットの並び">
+    <div class="sectlabels">
+      <div class="seclabel sign">符号部<small>1ビット</small></div>
+      <div class="seclabel exp">指数部<small>8ビット</small></div>
+      <div class="seclabel man">仮数部<small>23ビット</small></div>
+    </div>
+    <div class="bits" id="bits"></div>
+    <div class="bitscale" id="bitscale"></div>
+  </section>
+
+  <!-- ステッパー -->
+  <nav class="stepper" id="stepper" aria-label="ステップ一覧"></nav>
+
+  <!-- ステップ本文 -->
+  <section class="stage" id="stage">
+    <div class="placeholder">上の「変換する ▶」を押すと、ここに手順が1つずつ表示されます。</div>
+  </section>
+
+  <!-- ナビゲーション -->
+  <div class="nav" id="nav" style="display:none;">
+    <button class="btn btn-ghost" id="prevBtn">◀ もどる</button>
+    <span class="progress" id="progress"></span>
+    <button class="btn btn-ghost" id="nextBtn">つぎへ ▶</button>
+  </div>
+
+  <footer>IEEE 754 単精度（binary32）／ 学習用たたき台</footer>
+</div>
+
+<script>
+"use strict";
+
+/* ====== IEEE 754 単精度の「正しい」ビット列を取り出す ====== */
+const f32 = new Float32Array(1);
+const u32 = new Uint32Array(f32.buffer); // 同じメモリを共有 → 真のビット列が得られる
+
+function trueBits(x){
+  f32[0] = x;
+  const stored = f32[0];                 // 実際に格納される値（float32に丸めた値）
+  const u = u32[0] >>> 0;
+  const bitStr = u.toString(2).padStart(32,'0');
+  return {
+    stored,
+    bitStr,
+    sign: bitStr[0],
+    expBits: bitStr.slice(1,9),
+    manBits: bitStr.slice(9),
+    E: parseInt(bitStr.slice(1,9),2),    // 指数部の値（ゲタばき）
+    M: parseInt(bitStr.slice(9),2),
+    hex: '0x' + u.toString(16).padStart(8,'0').toUpperCase()
+  };
+}
+
+/* ====== 整数部：2で割っていく筆算 ====== */
+function intToBinary(n){
+  const rows=[];
+  if(n===0) return {rows:[{q:0,nq:0,r:0}], binary:'0'};
+  let q=n;
+  while(q>0){ const r=q%2, nq=Math.floor(q/2); rows.push({q,nq,r}); q=nq; }
+  return {rows, binary: rows.map(r=>r.r).reverse().join('')};
+}
+
+/* ====== 小数部：2をかけていく筆算 ====== */
+function fracToBinary(frac, maxBits){
+  const rows=[]; let f=frac, n=0;
+  while(f>0 && n<maxBits){
+    const d=f*2, b=Math.floor(d+1e-12), rest=d-b;
+    rows.push({f, d, b, rest});
+    f = rest<1e-12 ? 0 : rest; n++;
+  }
+  return {rows, binary: rows.map(r=>r.b).join(''), terminated: f===0};
+}
+
+/* ====== モデル構築 ====== */
+function buildModel(raw){
+  const x = Number(raw);
+  if(raw.trim()==='' || !isFinite(x)) return {error:'数を入力してください（例：12.375）'};
+
+  const t = trueBits(x);
+  if(!isFinite(t.stored)) return {error:'大きすぎて単精度では表せません（∞ になります）。'};
+
+  const neg = (t.sign==='1');
+  const absX = Math.abs(x);
+  const intPart = Math.floor(absX);
+  const fracPart = absX - intPart;
+
+  const intB = intToBinary(intPart);
+  const fracB = fracPart>0 ? fracToBinary(fracPart, 26) : {rows:[], binary:'', terminated:true};
+
+  const e = t.E - 127;                 // 正規化後の指数（ゲタを外した値）
+  const manTrim = t.manBits.replace(/0+$/,''); // 表示用に末尾0を省いた仮数
+
+  // 種別
+  let kind = 'normal';
+  if(t.E===0 && t.M===0) kind='zero';
+  else if(t.E===0) kind='subnormal';
+  else if(t.E===255) kind='special';
+
+  const exact = (t.stored === x);
+
+  return {x, raw, neg, absX, intPart, fracPart, intB, fracB, e, manTrim, kind, exact, ...t};
+}
+
+/* ====== 表示ヘルパ ====== */
+function bitClass(i){ return i===0 ? 'sign' : (i<=8 ? 'exp' : 'man'); }
+
+/* 32個のビット箱を描く。reveal={sign,exp,man} で表示範囲を制御 */
+function renderBits(model, reveal, popKey){
+  const bitsEl = document.getElementById('bits');
+  const scaleEl = document.getElementById('bitscale');
+  bitsEl.innerHTML=''; scaleEl.innerHTML='';
+  const full = model ? (model.sign + model.expBits + model.manBits) : '0'.repeat(32);
+  for(let i=0;i<32;i++){
+    const sec = bitClass(i);
+    const show = !model ? false :
+      (sec==='sign' ? reveal.sign : sec==='exp' ? reveal.exp : reveal.man);
+    const d=document.createElement('div');
+    d.className='bit '+sec+(show ? (full[i]==='1'?' on':' off') : ' empty');
+    d.textContent = show ? full[i] : '';
+    if(show && popKey && reveal._just===sec) d.classList.add('pop');
+    bitsEl.appendChild(d);
+    const s=document.createElement('span');
+    const txt = i===0?'31':(i===8?'23':(i===9?'22':(i===31?'0':'')));
+    s.textContent = txt;
+    if(txt) s.className = sec;
+    scaleEl.appendChild(s);
+  }
+}
+
+/* ====== ステップ定義 ====== */
+let MODEL=null, STEP=0, STEPS=[];
+
+function normalSteps(m){
+  const intBinStr = m.intB.binary;
+  const fracBinStr = m.fracB.binary;
+  const binValue = intBinStr + (fracBinStr ? '.'+fracBinStr : '') + (m.fracB.terminated?'':'…');
+  const reveal = (sign,exp,man,just)=>({sign,exp,man,_just:just});
+
+  return [
+    { // 0
+      title:'入力した数', sub:'これから32ビットに変換する10進数です。',
+      reveal:reveal(false,false,false),
+      html:`<div class="bignum">${escapeHtml(m.raw)}</div>
+            <div class="callout">この数を <b>符号</b>・<b>大きさ（指数）</b>・<b>細かさ（仮数）</b> の3つに分けて表します。右の色は <span style="color:var(--sign-deep)">■符号</span> / <span style="color:var(--exp-deep)">■指数</span> / <span style="color:var(--man-deep)">■仮数</span> に対応しています。</div>`
+    },
+    { // 1
+      title:'符号を決める', sub:'プラスかマイナスか。先頭の1ビットだけで表します。',
+      reveal:reveal(true,false,false,'sign'),
+      html:`<div class="callout sign">${m.neg
+        ? 'マイナスの数なので、符号ビットは <b>1</b> です。'
+        : 'プラスの数なので、符号ビットは <b>0</b> です。'}（0＝プラス / 1＝マイナス）</div>
+        <p>残りの31ビットは、<b>絶対値 ${fmt(m.absX)}</b> の大きさと細かさを表すために使います。</p>`
+    },
+    { // 2
+      title:'絶対値を2進数にする', sub:'整数部は「2で割る」、小数部は「2をかける」をくり返します。',
+      reveal:reveal(true,false,false),
+      html:`<div class="calc">
+        <div class="calc-block">
+          <h4>整数部 ${m.intPart} → 2で割る</h4>
+          ${intTable(m.intB)}
+          <div class="arrowread">あまりを<b>下から上へ</b>読む → <span class="mono">${intBinStr}</span></div>
+        </div>
+        <div class="calc-block">
+          <h4>小数部 ${m.fracPart>0?fmt(m.fracPart):'なし'} → 2をかける</h4>
+          ${m.fracPart>0 ? fracTable(m.fracB) : '<p style="color:var(--ink-soft)">小数部はありません。</p>'}
+          ${m.fracPart>0?`<div class="arrowread">整数になった桁を<b>上から下へ</b>読む → <span class="mono">${fracBinStr}${m.fracB.terminated?'':'…'}</span></div>`:''}
+        </div>
+      </div>
+      <div class="resultline">2進数：<span class="ipart">${intBinStr}</span>${fracBinStr?`<span class="dot">.</span><span class="fpart">${fracBinStr}${m.fracB.terminated?'':'…'}</span>`:''}</div>
+      ${m.fracB.terminated?'':'<div class="callout sign" style="margin-top:14px">この数は2進数では割り切れず、無限に続きます。あとで23ビットに収めるときに <b>丸め（誤差）</b> が起きます。</div>'}`
+    },
+    { // 3
+      title:'正規化する', sub:'小数点を動かして「1.□□□ × 2のn乗」の形にそろえます。',
+      reveal:reveal(true,false,false),
+      html:`<div class="normbox">
+        <div class="normrow">${binValue}</div>
+        <div class="moved">↓ 小数点を${m.e>=0?'左へ':'右へ'} <b>${Math.abs(m.e)}</b> けた動かす</div>
+        <div class="normrow"><span class="hi">1.${m.manTrim||'0'}</span> × 2<sup class="expo">${m.e}</sup>${m.fracB.terminated?'':'（23ビットに丸めた後）'}</div>
+      </div>
+      <div class="callout exp">先頭は必ず <b>1.</b> になります。この <b>1</b> はいつも同じなので保存しません（ケチ表現）。動かした桁数 <b>${m.e}</b> が、次の指数のもとになります。</div>`
+    },
+    { // 4
+      title:'指数部を求める', sub:'指数に127をたして（ゲタばき）、8ビットの2進数にします。',
+      reveal:reveal(true,true,false,'exp'),
+      html:`<div class="callout exp">
+        指数 <b>${m.e}</b> ＋ ゲタ <b>127</b> ＝ <b>${m.E}</b><br>
+        ${m.E} を8ビットの2進数にすると → <span class="mono" style="font-size:20px;font-weight:700">${m.expBits}</span>
+      </div>
+      <p>マイナスの指数も表せるように、あらかじめ127をたしておく仕組みです（ゲタばき表現）。指数部の8マスが埋まりました。</p>`
+    },
+    { // 5
+      title:'仮数部を求める', sub:'正規化した「1.□□□」の小数点以下を、23ビットならべます。',
+      reveal:reveal(true,true,true,'man'),
+      html:`<div class="callout man">
+        正規化した小数点以下 <span class="mono">${m.manTrim||'(なし)'}</span> を、右を0でうめて23ビットに：<br>
+        <span class="mono" style="font-size:17px;font-weight:700;word-break:break-all">${m.manBits}</span>
+      </div>
+      <p>先頭の「1」は保存しないので、書くのは小数点以下だけです。仮数部の23マスが埋まり、32ビットがそろいました。</p>`
+    },
+    { // 6
+      title:'32ビットの完成', sub:'符号・指数・仮数を順につなげると、これがメモリに入る形です。',
+      reveal:reveal(true,true,true),
+      html:`<div class="resultline" style="font-size:18px"><span style="color:var(--sign-deep);font-weight:700">${m.sign}</span> <span style="color:var(--exp-deep);font-weight:700">${m.expBits}</span> <span style="color:var(--man-deep);font-weight:700">${m.manBits}</span></div>
+      <div class="finalgrid">
+        <div class="fcell"><div class="k">符号部</div><div class="v" style="color:var(--sign-deep)">${m.sign}</div></div>
+        <div class="fcell"><div class="k">指数部（8ビット）</div><div class="v" style="color:var(--exp-deep)">${m.expBits}</div></div>
+        <div class="fcell"><div class="k">仮数部（23ビット）</div><div class="v" style="color:var(--man-deep)">${m.manBits}</div></div>
+        <div class="fcell"><div class="k">16進数</div><div class="v">${m.hex}</div></div>
+      </div>
+      <div class="verify">${m.exact
+        ? `<span class="ok">✓ ぴったり表現できました。</span> このビット列は ${fmt(m.stored)} を表します。`
+        : `<span class="warn">⚠ わずかに誤差があります。</span> 入力 ${escapeHtml(m.raw)} に対し、実際に表されるのは <span class="mono">${m.stored}</span> です。`}</div>`
+    }
+  ];
+}
+
+function zeroSteps(m){
+  const reveal=(s,e,mn)=>({sign:s,exp:e,man:mn});
+  return [
+    {title:'入力した数', sub:'0 は特別なきまりで表します。', reveal:reveal(false,false,false),
+     html:`<div class="bignum">${escapeHtml(m.raw)}</div><div class="callout">0 は正規化できない（先頭の1が作れない）ため、特別なパターンで表します。</div>`},
+    {title:'0 の表し方', sub:'指数部・仮数部をすべて0にします。', reveal:reveal(true,true,true),
+     html:`<div class="callout exp">符号 <b>${m.sign}</b>、指数部 <b>すべて0</b>、仮数部 <b>すべて0</b> ＝ これが 0 を表すきまりです。</div>
+     <div class="resultline" style="font-size:18px"><span style="color:var(--sign-deep)">${m.sign}</span> <span style="color:var(--exp-deep)">${m.expBits}</span> <span style="color:var(--man-deep)">${m.manBits}</span></div>
+     <div class="finalgrid"><div class="fcell"><div class="k">16進数</div><div class="v">${m.hex}</div></div></div>`}
+  ];
+}
+
+function specialSteps(m){
+  const reveal=(s,e,mn)=>({sign:s,exp:e,man:mn});
+  const msg = m.kind==='subnormal'
+    ? 'とても小さい数（非正規化数）です。指数部が0の特別な形で表されます。'
+    : 'この値は ∞（無限大）または NaN として扱われる特別な形です。';
+  return [
+    {title:'特別な数', sub:'通常の手順とは別のきまりで表されます。', reveal:reveal(true,true,true),
+     html:`<div class="callout sign">${msg}</div>
+     <div class="resultline" style="font-size:18px"><span style="color:var(--sign-deep)">${m.sign}</span> <span style="color:var(--exp-deep)">${m.expBits}</span> <span style="color:var(--man-deep)">${m.manBits}</span></div>
+     <div class="finalgrid"><div class="fcell"><div class="k">16進数</div><div class="v">${m.hex}</div></div></div>
+     <p style="color:var(--ink-soft)">授業では 12.375 や -5.5 など、ふつうの大きさの数で試すのがおすすめです。</p>`}
+  ];
+}
+
+/* ====== テーブル生成 ====== */
+function intTable(intB){
+  let rows = intB.rows.map((r,i)=>
+    `<tr style="animation-delay:${i*0.06}s"><td>${r.q} ÷ 2</td><td>= ${r.nq}</td><td class="rem">あまり ${r.r}</td></tr>`
+  ).join('');
+  return `<table class="steps">${rows}</table>`;
+}
+function fracTable(fracB){
+  let rows = fracB.rows.map((r,i)=>
+    `<tr style="animation-delay:${i*0.06}s"><td>${fmt(r.f)} × 2</td><td>= ${fmt(r.d)}</td><td class="bit1">${r.b}</td></tr>`
+  ).join('');
+  return `<table class="steps">${rows}</table>`;
+}
+
+/* ====== 数値の整形（長すぎる小数を抑える） ====== */
+function fmt(v){
+  if(Number.isInteger(v)) return String(v);
+  let s = v.toPrecision(10);
+  s = s.replace(/0+$/,'').replace(/\.$/,'');
+  return s;
+}
+function escapeHtml(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+/* ====== 描画 ====== */
+function renderStepper(){
+  const el=document.getElementById('stepper'); el.innerHTML='';
+  const labels = STEPS.map((s,i)=> (STEPS.length>3? (i+'. '+s.title) : s.title));
+  STEPS.forEach((s,i)=>{
+    const b=document.createElement('button');
+    b.textContent = labels[i];
+    if(i===STEP) b.classList.add('active');
+    else if(i<STEP) b.classList.add('done');
+    b.onclick=()=>{STEP=i; render();};
+    el.appendChild(b);
+  });
+}
+
+function render(){
+  const stage=document.getElementById('stage');
+  const s=STEPS[STEP];
+  renderBits(MODEL, s.reveal, true);
+  stage.classList.remove('anim'); void stage.offsetWidth; stage.classList.add('anim');
+  stage.innerHTML=`
+    <div class="stage-head">
+      <span class="stage-num">STEP ${STEP+1}</span>
+      <h3 class="stage-title">${s.title}</h3>
+    </div>
+    <p class="stage-sub">${s.sub}</p>
+    ${s.html}`;
+  document.getElementById('nav').style.display='flex';
+  document.getElementById('progress').textContent=`STEP ${STEP+1} / ${STEPS.length}`;
+  document.getElementById('prevBtn').disabled = (STEP===0);
+  document.getElementById('nextBtn').disabled = (STEP===STEPS.length-1);
+  renderStepper();
+}
+
+function start(){
+  const raw=document.getElementById('numInput').value;
+  const m=buildModel(raw);
+  if(m.error){
+    MODEL=null; STEPS=[]; renderBits(null,{});
+    document.getElementById('stepper').innerHTML='';
+    document.getElementById('nav').style.display='none';
+    document.getElementById('stage').innerHTML=`<div class="placeholder">${m.error}</div>`;
+    return;
+  }
+  MODEL=m;
+  STEPS = m.kind==='normal'? normalSteps(m) : m.kind==='zero'? zeroSteps(m) : specialSteps(m);
+  STEP=0; render();
+  document.getElementById('stage').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+/* ====== イベント ====== */
+document.getElementById('convertBtn').addEventListener('click', start);
+document.getElementById('numInput').addEventListener('keydown', e=>{ if(e.key==='Enter') start(); });
+document.getElementById('prevBtn').addEventListener('click', ()=>{ if(STEP>0){STEP--;render();} });
+document.getElementById('nextBtn').addEventListener('click', ()=>{ if(STEP<STEPS.length-1){STEP++;render();} });
+document.querySelectorAll('.chip').forEach(c=> c.addEventListener('click', ()=>{
+  document.getElementById('numInput').value=c.dataset.v; start();
+}));
+document.addEventListener('keydown', e=>{
+  if(STEPS.length===0) return;
+  if(document.activeElement && document.activeElement.id==='numInput') return;
+  if(e.key==='ArrowRight' && STEP<STEPS.length-1){STEP++;render();}
+  if(e.key==='ArrowLeft' && STEP>0){STEP--;render();}
+});
+
+/* 初期状態：空のビット帯を描く */
+renderBits(null,{});
+</script>
+</body>
+</html>
